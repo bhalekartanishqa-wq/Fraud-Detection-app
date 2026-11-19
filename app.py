@@ -12,8 +12,20 @@ st.set_page_config(
 # 2. Train Lightweight AI Fraud Detection Model
 @st.cache_resource
 def load_ai_model():
-    # Features: [Amount (INR), Is_New_Receiver, Is_Collect_Request, Has_Urgent_Link, Late_Night_Tx]
-    data = [,      # Safe: regular small transfer,     # Safe: known contact,    # Safe: rent/bill to known receiver,      # Safe: small shop payment,    # Fraud: high amount + collect request + link,    # Fraud: "accept request to receive cashback",    # Fraud: fake KYC link,     # Fraud: lottery/prize collect request,      # Safe: late night food order,    # Fraud: urgent refund scam,     # Safe: new merchant scan,    # Fraud: OLX/marketplace QR scam
+    # Columns: (Amount, New_Receiver, Collect_Request, Urgent_Link, Late_Night, Fraud)
+    data = [
+        (500, 0, 0, 0, 0, 0),
+        (2000, 0, 0, 0, 0, 0),
+        (15000, 0, 0, 0, 0, 0),
+        (300, 1, 0, 0, 0, 0),
+        (450, 0, 0, 0, 1, 0),
+        (1200, 1, 0, 0, 0, 0),
+        (25000, 1, 1, 1, 1, 1),
+        (5000, 1, 1, 0, 0, 1),
+        (40000, 1, 0, 1, 0, 1),
+        (10000, 1, 1, 1, 0, 1),
+        (8000, 1, 0, 1, 1, 1),
+        (12000, 1, 1, 0, 1, 1)
     ]
     columns = ["Amount", "New_Receiver", "Collect_Request", "Urgent_Link", "Late_Night", "Fraud"]
     df = pd.DataFrame(data, columns=columns)
@@ -38,7 +50,7 @@ tab1, tab2, tab3 = st.tabs(["🤖 AI Risk Analyzer", "🎭 Scam Simulator Quiz",
 # --- TAB 1: AI FRAUD RISK ANALYZER ---
 with tab1:
     st.markdown("### Test a Digital Transaction")
-    st.write("Enter transaction details below to see how an AI banking engine evaluates fraud risk.")
+    st.write("Adjust the payment conditions below to see how an AI banking engine scores fraud risk in real time.")
     
     amount = st.number_input("Transaction Amount (₹)", min_value=1, max_value=500000, value=5000, step=500)
     new_receiver = st.checkbox("Paying a brand-new / unknown recipient?", value=True)
@@ -47,15 +59,15 @@ with tab1:
     late_night = st.checkbox("Is this happening late at night (11 PM – 5 AM)?", value=False)
 
     if st.button("Analyze Transaction with AI", type="primary"):
-        features = [[
-            amount,
-            int(new_receiver),
-            int(collect_request),
-            int(urgent_link),
-            int(late_night)
-        ]]
-        prediction = model.predict(features)[0]
-        fraud_prob = model.predict_proba(features)[0][1] * 100
+        features = pd.DataFrame([{
+            "Amount": amount,
+            "New_Receiver": int(new_receiver),
+            "Collect_Request": int(collect_request),
+            "Urgent_Link": int(urgent_link),
+            "Late_Night": int(late_night)
+        }])
+        prediction = model.predict(features).item()
+        fraud_prob = model.predict_proba(features).flatten().tolist()[-1] * 100
 
         st.divider()
         if prediction == 1 or fraud_prob >= 50:
@@ -67,14 +79,16 @@ with tab1:
                 st.write("- **Phishing Link:** Banks never ask customers to update KYC or claim refunds via SMS/WhatsApp links.")
             if new_receiver and amount > 10000:
                 st.write("- **High-Value New Payee:** Large transfers to unverified accounts carry high irreversible risk.")
+            if not (collect_request or urgent_link or (new_receiver and amount > 10000)):
+                st.write("- **Suspicious Pattern:** The combination of timing, new recipient, and amount matches known fraud behavior.")
         else:
             st.success(f"✅ LOW RISK TRANSACTION ({fraud_prob:.1f}% Risk Score)")
-            st.write("This transaction follows normal digital banking behavior. Always double-check the recipient's verified banking name before entering your PIN.")
+            st.write("This transaction follows normal digital banking behavior. Always verify the recipient's registered banking name before entering your PIN.")
 
 # --- TAB 2: INTERACTIVE SCAM SIMULATOR ---
 with tab2:
     st.markdown("### Can You Spot the Digital Banking Scam?")
-    st.write("Test your financial literacy against real-world fraud scenarios.")
+    st.write("Test your financial literacy against real-world digital payment traps.")
 
     scenarios = [
         {
@@ -100,7 +114,6 @@ with tab2:
         }
     ]
 
-    score = 0
     for idx, s in enumerate(scenarios):
         st.markdown(f"**{s['title']}**")
         st.warning(s["msg"])
@@ -108,7 +121,6 @@ with tab2:
         if choice:
             if choice == s["correct"]:
                 st.success(f"Correct! {s['lesson']}")
-                score += 1
             else:
                 st.error(f"Scam Alert! {s['lesson']}")
         st.divider()
